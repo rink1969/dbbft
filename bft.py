@@ -38,11 +38,13 @@ sqlite>
 '''
 
 
+bftdb = sqlite3.connect('bft.db')
+cursor = bftdb.cursor()
+
+
 def main():
-    # create db
-    logging.info("create db bft.db")
-    bftdb = sqlite3.connect('bft.db')
-    cursor = bftdb.cursor()
+    logging.basicConfig(level=logging.INFO)
+
     # create tables
     logging.info("create db tables")
     cursor.execute('create table proposers(height int, count int, proposer_list blob);')
@@ -132,26 +134,50 @@ def main():
     delete from commit_info where height <= NEW.height; \
     delete from actions where height <= NEW.height; \
     end;')
-
+    bftdb.commit()
     logging.info("db init complete")
     # begin test
-    test(cursor)
+    test()
+    bftdb.commit()
+    bftdb.close()
 
 
-def test(cursor):
-    test_after_proposals_1(cursor)
+def show_all(height):
+    logging.info("show proposals")
+    cursor.execute('select * from proposals where height = ?', (height,))
+    print(cursor.fetchall())
+    logging.info("show pre_votes")
+    cursor.execute('select * from pre_votes where height = ?', (height,))
+    print(cursor.fetchall())
+    logging.info("show pre_commits")
+    cursor.execute('select * from pre_commits where height = ?', (height,))
+    print(cursor.fetchall())
+    logging.info("show lock_info")
+    cursor.execute('select * from lock_info where height = ?', (height,))
+    print(cursor.fetchall())
+    logging.info("show commit_info")
+    cursor.execute('select * from commit_info where height = ?', (height,))
+    print(cursor.fetchall())
+    logging.info("show chain_status")
+    cursor.execute('select * from chain_status where height = ?', (height,))
+    print(cursor.fetchall())
 
 
-def test_init(cursor):
+def test():
+    test_2round_ok_1()
+
+
+def test_init():
+    logging.info("### init genesis")
     # get chain_status
     cursor.execute('insert into chain_status (ii, height, block_hash) values (0, 0, "0x0000")')
     cursor.execute('insert into proposers (height, count, proposer_list) values (0, 4, "0123")')
-    cursor.execute('insert into validators (height, count, threshold, validator) values (0, 4, 2, "1234")')
+    cursor.execute('insert into validators (height, count, threshold, validator) values (1, 4, 2, "0123")')
 
 
-def test_after_proposals_0(cursor):
+def test_after_proposals_0():
     # get chain_status
-    test_init(cursor)
+    test_init()
     # get proposal
     cursor.execute('insert into proposals (height, round, proposal_hash, signature, sender) \
     values (1, 0, "0x1111", "0xaaaa", "0")')
@@ -160,8 +186,8 @@ def test_after_proposals_0(cursor):
     print(cursor.fetchall())
 
 
-def test_after_proposals_1(cursor):
-    test_init(cursor)
+def test_after_proposals_1():
+    test_init()
     # set lock info
     cursor.execute('insert into lock_info (height, proposal_hash, lock_round) \
     values (1, "0x2222", 0)')
@@ -171,6 +197,65 @@ def test_after_proposals_1(cursor):
     # check pre_votes
     cursor.execute('select * from pre_votes where height = ?', (1,))
     print(cursor.fetchall())
+
+
+def test_round_ok_0():
+    test_init()
+    # get proposal
+    cursor.execute('insert into proposals (height, round, proposal_hash, signature, sender) \
+    values (1, 0, "0x1111", "0xaaaa", "0")')
+    # get pre votes
+    cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
+    values (1, 0, "0x1111", "0xbbbb", "1")')
+    cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
+    values (1, 0, "0x1111", "0xcccc", "2")')
+    # get pre commits
+    cursor.execute('insert into pre_commits (height, round, proposal_hash, signature, sender) \
+    values (1, 0, "0x1111", "0xbbbb", "1")')
+    cursor.execute('insert into pre_commits (height, round, proposal_hash, signature, sender) \
+    values (1, 0, "0x1111", "0xcccc", "2")')
+    show_all(1)
+
+
+def test_2round_ok_1():
+    test_init()
+    logging.info("### round 0")
+    # get proposal
+    cursor.execute('insert into proposals (height, round, proposal_hash, signature, sender) \
+    values (1, 0, "0x1111", "0xaaaa", "0")')
+    # get pre votes
+    cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
+    values (1, 0, "0x1111", "0xbbbb", "1")')
+    cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
+    values (1, 0, "0x1111", "0xcccc", "2")')
+    # get pre commits
+    cursor.execute('insert into pre_commits (height, round, proposal_hash, signature, sender) \
+    values (1, 0, "0x1111", "0xbbbb", "1")')
+    show_all(1)
+
+    logging.info("### round 1")
+    # get proposal
+    cursor.execute('insert into proposals (height, round, proposal_hash, signature, sender) \
+    values (1, 1, "0x2222", "0xaaaa", "0")')
+    # get pre votes
+    cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
+    values (1, 1, "0x1111", "0xbbbb", "1")')
+    cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
+    values (1, 1, "0x1111", "0xcccc", "2")')
+    cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
+    values (1, 1, "0x2222", "0xdddd", "3")')
+    # get pre commits
+    cursor.execute('insert into pre_commits (height, round, proposal_hash, signature, sender) \
+    values (1, 1, "0x1111", "0xbbbb", "1")')
+    cursor.execute('insert into pre_commits (height, round, proposal_hash, signature, sender) \
+    values (1, 1, "0x1111", "0xcccc", "2")')
+    cursor.execute('insert into pre_commits (height, round, proposal_hash, signature, sender) \
+    values (1, 1, "0x2222", "0xdddd", "3")')
+    show_all(1)
+
+    logging.info("### get chain status")
+    cursor.execute('update chain_status set height = 1, block_hash = "0x1111"')
+    show_all(1)
 
 
 if __name__ == '__main__':
