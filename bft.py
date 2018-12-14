@@ -94,6 +94,8 @@ def main():
     where height = NEW.height and round = NEW.round and proposal_hash is null; \
     insert into pre_votes \
     select * from proposals where height = NEW.height and round = NEW.round; \
+    insert into actions (height, round, action) \
+    values (NEW.height, NEW.round, "1_pre_vote"); \
     end;')
     cursor.execute('create trigger after_insert_pre_votes after insert \
     on pre_votes \
@@ -110,6 +112,8 @@ def main():
     lock_round = excluded.lock_round \
     where excluded.lock_round > lock_info.lock_round; \
     delete from lock_info where proposal_hash = ""; \
+    insert into actions (height, round, action) \
+    values (NEW.height, NEW.round, "2_pre_commit"); \
     end;')
     cursor.execute('create trigger after_insert_pre_commits after insert \
     on pre_commits \
@@ -119,6 +123,8 @@ def main():
     (select threshold from validators where height = NEW.height) \
     begin \
     insert into commit_info (height, proposal_hash) values (NEW.height, NEW.proposal_hash); \
+    insert into actions (height, round, action) \
+    values (NEW.height, NEW.round, "3_commit"); \
     end;')
     cursor.execute('create trigger after_insert_chain_status after update \
     on chain_status \
@@ -133,6 +139,8 @@ def main():
     delete from lock_info where height <= NEW.height; \
     delete from commit_info where height <= NEW.height; \
     delete from actions where height <= NEW.height; \
+    insert into actions (height, round, action) \
+    values (NEW.height + 1, 0, "0_proposal"); \
     end;')
     bftdb.commit()
     logging.info("db init complete")
@@ -160,6 +168,13 @@ def show_all(height):
     print(cursor.fetchall())
     logging.info("show chain_status")
     cursor.execute('select * from chain_status where height = ?', (height,))
+    print(cursor.fetchall())
+
+
+def what_should_do(height):
+    print("we should ")
+    cursor.execute('select MAX(action) from actions where height = ? and round = (select MAX(round) from actions)',
+                   (height,))
     print(cursor.fetchall())
 
 
@@ -221,40 +236,63 @@ def test_2round_ok_1():
     test_init()
     logging.info("### round 0")
     # get proposal
+    logging.info("### insert proposal")
     cursor.execute('insert into proposals (height, round, proposal_hash, signature, sender) \
     values (1, 0, "0x1111", "0xaaaa", "0")')
+    what_should_do(1)
     # get pre votes
+    logging.info("### insert pre_votes")
     cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
     values (1, 0, "0x1111", "0xbbbb", "1")')
+    what_should_do(1)
+    logging.info("### insert pre_votes")
     cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
     values (1, 0, "0x1111", "0xcccc", "2")')
+    what_should_do(1)
     # get pre commits
+    logging.info("### insert pre_commits")
     cursor.execute('insert into pre_commits (height, round, proposal_hash, signature, sender) \
     values (1, 0, "0x1111", "0xbbbb", "1")')
+    what_should_do(1)
     show_all(1)
 
     logging.info("### round 1")
     # get proposal
+    logging.info("### insert proposals")
     cursor.execute('insert into proposals (height, round, proposal_hash, signature, sender) \
     values (1, 1, "0x2222", "0xaaaa", "0")')
+    what_should_do(1)
     # get pre votes
+    logging.info("### insert pre_votes")
     cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
     values (1, 1, "0x1111", "0xbbbb", "1")')
+    what_should_do(1)
+    logging.info("### insert pre_votes")
     cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
     values (1, 1, "0x1111", "0xcccc", "2")')
+    what_should_do(1)
+    logging.info("### insert pre_votes")
     cursor.execute('insert into pre_votes (height, round, proposal_hash, signature, sender) \
     values (1, 1, "0x2222", "0xdddd", "3")')
+    what_should_do(1)
     # get pre commits
+    logging.info("### insert pre_commits")
     cursor.execute('insert into pre_commits (height, round, proposal_hash, signature, sender) \
     values (1, 1, "0x1111", "0xbbbb", "1")')
+    what_should_do(1)
+    logging.info("### insert pre_commits")
     cursor.execute('insert into pre_commits (height, round, proposal_hash, signature, sender) \
     values (1, 1, "0x1111", "0xcccc", "2")')
+    what_should_do(1)
+    logging.info("### insert pre_commits")
     cursor.execute('insert into pre_commits (height, round, proposal_hash, signature, sender) \
     values (1, 1, "0x2222", "0xdddd", "3")')
+    what_should_do(1)
     show_all(1)
 
     logging.info("### get chain status")
     cursor.execute('update chain_status set height = 1, block_hash = "0x1111"')
+    what_should_do(2)
     show_all(1)
 
 
